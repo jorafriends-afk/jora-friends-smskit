@@ -1,0 +1,4 @@
+deploy.secret.php
+config/*.json
+config/*.php
+!config/.htaccess
