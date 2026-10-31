@@ -115,27 +115,34 @@ curl -X POST https://yourdomain.com/api/v1/send.php \
   -H "Authorization: Bearer sk_live_xxxxxxxxxxxxxxxxxxxx" \
   -H "Content-Type: application/json" \
   -d '{
-    "to": ["+8801711000001", "+8801812000002"],
+    "numbers": ["+8801711000001", "+8801812000002"],
     "message": "Your OTP is 847291. Valid for 5 minutes."
   }'
 ```
 
 ```json
 {
-  "success": true,
-  "queued": 2,
-  "messages": [
-    { "id": "msg_a1b2c3d4", "to": "+8801711000001", "status": "queued" },
-    { "id": "msg_e5f6g7h8", "to": "+8801812000002", "status": "queued" }
-  ]
+  "ok": true,
+  "message_id": "msg_a1b2c3d4",
+  "sent_count": 2,
+  "queued": true
 }
 ```
+
+`numbers` must be a non-empty array. Despite its name, `sent_count` in this
+response counts queued recipients; it does not confirm transmission. Store
+`message_id` and query `status.php` with that group ID (not an individual queue
+item's `id`). A successful POST alone must not be displayed as sent.
+
+The send endpoint has no idempotency key. After a timeout or an unreadable
+response, the outcome may be unknown: do not blindly retry or switch providers,
+as the first request might already have queued the SMS.
 
 ---
 
 ### `GET /status.php?id=xxx`
 
-Check the delivery status of a specific message.
+Check the gateway-reported status of a message group.
 
 ```bash
 curl -X GET "https://yourdomain.com/api/v1/status.php?id=msg_a1b2c3d4" \
@@ -144,16 +151,35 @@ curl -X GET "https://yourdomain.com/api/v1/status.php?id=msg_a1b2c3d4" \
 
 ```json
 {
-  "success": true,
-  "id": "msg_a1b2c3d4",
-  "to": "+8801711000001",
-  "message": "Your OTP is 847291. Valid for 5 minutes.",
+  "ok": true,
+  "message_id": "msg_a1b2c3d4",
   "status": "sent",
-  "device": "device_01",
-  "queued_at": "2026-05-18T10:22:00Z",
-  "sent_at": "2026-05-18T10:22:04Z"
+  "total_count": 1,
+  "sent_count": 1,
+  "failed_count": 0,
+  "queued_count": 0,
+  "created_at": "2026-05-18 10:22:00",
+  "items": [
+    {
+      "id": "msg_a1b2c3d4_1234",
+      "message_id": "msg_a1b2c3d4",
+      "to": "+8801711000001",
+      "message": "Your OTP is 847291. Valid for 5 minutes.",
+      "status": "sent",
+      "created_at": "2026-05-18 10:22:00",
+      "sent_at": "2026-05-18 10:22:04",
+      "source": "api",
+      "api_key_id": "example_key_id",
+      "error": null
+    }
+  ]
 }
 ```
+
+Group status is `queued`, `sent`, `failed`, or `partial`. `sent` means all
+queue items are marked sent by the gateway's report endpoint; it is not proof
+that the recipient received or read the SMS. Inspect counts and individual
+items for mixed outcomes. Unknown group IDs return HTTP 404.
 
 ---
 
